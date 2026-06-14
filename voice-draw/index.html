@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voice Draw — 纯语音绘图 v3.0</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+:root {
+  --bg: #08080e;
+  --surface: rgba(16,16,32,0.82);
+  --glass: rgba(255,255,255,0.03);
+  --glass-hover: rgba(255,255,255,0.07);
+  --border: rgba(255,255,255,0.07);
+  --border-glow: rgba(255,255,255,0.12);
+  --text: #e8e8ef;
+  --text-secondary: #9090a8;
+  --text-tertiary: #585870;
+  --accent: #6366f1;
+  --accent-glow: rgba(99,102,241,0.5);
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-xs: 6px;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  display:flex;height:100vh;overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+  user-select:none;-webkit-user-select:none;
+}
+
+/* 动态光晕背景 */
+.bg-aura{
+  position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(ellipse 60% 60% at 25% 30%, rgba(99,102,241,0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 50% at 75% 65%, rgba(239,68,68,0.05) 0%, transparent 55%),
+    radial-gradient(ellipse 55% 55% at 50% 50%, rgba(16,185,129,0.04) 0%, transparent 55%);
+  animation: auraShift 20s ease-in-out infinite;
+}
+@keyframes auraShift{
+  0%,100%{opacity:.7}
+  50%{opacity:1}
+}
+.bg-grid{
+  position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
+  background-image:
+    linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
+  background-size:48px 48px;
+}
+
+/* Toast */
+.toast-container{
+  position:fixed;top:20px;right:20px;z-index:1000;
+  display:flex;flex-direction:column;gap:8px;
+}
+.toast{
+  padding:12px 20px;border-radius:var(--radius-xs);font-size:.78rem;font-weight:600;
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  animation:toastIn .35s var(--ease),toastOut .3s 2.5s var(--ease) forwards;
+  letter-spacing:-.1px;box-shadow:0 8px 30px rgba(0,0,0,.4);
+}
+.toast.success{background:rgba(16,185,129,.2);border:1px solid rgba(16,185,129,.3);color:var(--success)}
+.toast.error{background:rgba(239,68,68,.2);border:1px solid rgba(239,68,68,.3);color:var(--danger)}
+.toast.info{background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.3);color:var(--accent)}
+@keyframes toastIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+@keyframes toastOut{from{opacity:1}to{opacity:0;transform:translateY(-10px)}}
+
+/* 快捷键面板遮罩 */
+.overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999;
+  display:none;align-items:center;justify-content:center;
+  backdrop-filter:blur(4px);
+}
+.overlay.show{display:flex}
+.shortcut-panel{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:28px 32px;min-width:360px;
+  box-shadow:0 20px 50px rgba(0,0,0,.5);
+}
+.shortcut-panel h2{font-size:1rem;margin-bottom:16px}
+.shortcut-panel table{width:100%;border-collapse:collapse}
+.shortcut-panel td{padding:8px 0;font-size:.78rem;border-bottom:1px solid var(--border)}
+.shortcut-panel td:first-child{font-weight:700;color:var(--accent);width:110px}
+.shortcut-panel td:last-child{color:var(--text-secondary)}
+
+/* 左侧面板 */
+.sidebar{
+  width:400px;min-width:400px;
+  background:var(--surface);
+  backdrop-filter:blur(40px) saturate(160%);
+  -webkit-backdrop-filter:blur(40px) saturate(160%);
+  display:flex;flex-direction:column;
+  border-right:1px solid var(--border);
+  position:relative;z-index:10;
+}
+.sidebar-header{
+  padding:22px 28px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:14px;
+}
+.logo{
+  width:42px;height:42px;
+  background:linear-gradient(135deg,#6366f1,#a78bfa);
+  border-radius:12px;display:flex;align-items:center;justify-content:center;
+  font-size:20px;box-shadow:0 6px 20px rgba(99,102,241,.35);
+}
+.sidebar-header h1{font-size:1.2rem;font-weight:700;letter-spacing:-.4px}
+.status-dot{
+  width:9px;height:9px;border-radius:50%;background:var(--success);
+  margin-left:auto;box-shadow:0 0 10px var(--success);transition:.3s;
+}
+.status-dot.offline{background:var(--danger);box-shadow:0 0 10px var(--danger)}
+
+.status-bar{
+  padding:8px 28px;font-size:.68rem;color:var(--text-tertiary);
+  background:var(--glass);display:flex;justify-content:space-between;align-items:center;
+}
+.obj-badge{
+  background:rgba(16,185,129,.12);color:var(--success);
+  padding:3px 12px;border-radius:20px;font-weight:700;font-size:.68rem;
+}
+.source-tag{
+  padding:2px 9px;border-radius:4px;font-size:.62rem;font-weight:700;
+  text-transform:uppercase;letter-spacing:.5px;
+}
+.source-tag.local{background:rgba(16,185,129,.15);color:var(--success)}
+.source-tag.api{background:rgba(99,102,241,.15);color:var(--accent)}
+
+/* 语音区域 */
+.voice-section{padding:20px 28px;border-bottom:1px solid var(--border)}
+.mic-btn{
+  width:100%;padding:18px;
+  border:1px solid var(--border);
+  background:var(--glass);
+  color:var(--text);
+  font-size:.95rem;font-weight:600;
+  border-radius:var(--radius);
+  cursor:pointer;transition:all .35s var(--ease);
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  position:relative;overflow:hidden;
+  letter-spacing:-.2px;
+}
+.mic-btn::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(99,102,241,.4),rgba(167,139,250,.4));
+  opacity:0;transition:opacity .35s var(--ease);z-index:0;
+}
+.mic-btn span{position:relative;z-index:1}
+.mic-btn:hover{
+  border-color:var(--border-glow);background:var(--glass-hover);
+  transform:translateY(-2px);
+  box-shadow:0 12px 30px rgba(0,0,0,.4),0 0 0 1px rgba(99,102,241,.15);
+}
+.mic-btn:active{transform:scale(.97)}
+.mic-btn.listening{
+  border-color:var(--danger);
+  background:rgba(239,68,68,.1);
+  color:var(--danger);
+  box-shadow:0 0 40px rgba(239,68,68,.25),inset 0 0 40px rgba(239,68,68,.04);
+}
+.mic-btn.thinking{
+  border-color:var(--accent);
+  background:rgba(99,102,241,.1);
+  color:var(--accent);
+  animation:thinkingShimmer 1.5s ease-in-out infinite;
+}
+@keyframes thinkingShimmer{
+  0%,100%{box-shadow:0 0 20px rgba(99,102,241,.1)}
+  50%{box-shadow:0 0 40px rgba(99,102,241,.25)}
+}
+
+.mic-hint{
+  font-size:.65rem;color:var(--text-tertiary);text-align:center;
+  margin-top:10px;letter-spacing:.2px;
+}
+.waveform{
+  display:flex;align-items:flex-end;justify-content:center;gap:4px;
+  height:32px;margin-top:12px;opacity:0;transition:opacity .25s;
+}
+.waveform.active{opacity:1}
+.wave-bar{
+  width:4px;border-radius:3px;
+  background:var(--danger);
+  transition:height .08s ease;
+  min-height:4px;
+}
+.transcript{
+  margin-top:12px;padding:12px 16px;background:var(--glass);
+  border-radius:var(--radius-sm);font-size:.8rem;min-height:40px;
+  word-break:break-all;line-height:1.5;color:var(--text-secondary);
+  border:1px solid var(--border);
+}
+.transcript.interim{color:var(--text)}
+.transcript.final{color:var(--success);font-weight:500}
+
+/* 快捷按钮 */
+.quick-row{
+  padding:10px 28px;border-bottom:1px solid var(--border);
+  display:flex;gap:6px;flex-wrap:wrap;
+}
+.quick-row button{
+  padding:7px 14px;font-size:.68rem;font-weight:500;
+  border:1px solid var(--border);background:var(--glass);
+  color:var(--text-secondary);border-radius:20px;cursor:pointer;
+  transition:all .25s var(--ease);letter-spacing:-.1px;
+}
+.quick-row button:hover{
+  border-color:var(--accent);color:var(--accent);
+  background:rgba(99,102,241,.06);
+}
+
+/* 澄清 */
+.clarity-box{
+  margin:10px 28px;padding:12px 16px;
+  background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);
+  border-radius:var(--radius-sm);font-size:.76rem;color:var(--warning);
+  display:none;line-height:1.5;
+}
+.clarity-box.show{display:block}
+
+/* 日志 */
+.log-section{flex:1;display:flex;flex-direction:column;overflow:hidden;border-top:1px solid var(--border)}
+.log-section h3{
+  padding:16px 28px 10px;font-size:.65rem;color:var(--text-tertiary);
+  text-transform:uppercase;letter-spacing:1.2px;font-weight:700;
+}
+.log-list{
+  flex:1;overflow-y:auto;padding:0 18px 12px;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent;
+}
+.log-entry{
+  padding:10px 14px;margin-bottom:6px;background:var(--glass);
+  border-radius:var(--radius-sm);border-left:3px solid var(--accent);
+  font-size:.68rem;font-family:'SF Mono','Cascadia Code','Fira Code',monospace;
+  word-break:break-all;line-height:1.6;transition:.2s;
+}
+.log-entry.error{border-left-color:var(--danger)}
+.log-entry.clarify{border-left-color:var(--warning)}
+.log-entry .log-meta{display:flex;justify-content:space-between;margin-bottom:5px}
+.log-time{color:var(--text-tertiary);font-size:.6rem}
+
+/* 图层列表 */
+.layer-section{
+  max-height:180px;overflow-y:auto;border-top:1px solid var(--border);
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent;
+}
+.layer-section h3{
+  padding:14px 28px 8px;font-size:.65rem;color:var(--text-tertiary);
+  text-transform:uppercase;letter-spacing:1.2px;font-weight:700;
+}
+.layer-item{
+  display:flex;align-items:center;gap:10px;padding:7px 28px;
+  font-size:.7rem;color:var(--text-secondary);cursor:pointer;
+  transition:background .15s;
+}
+.layer-item:hover{background:var(--glass-hover)}
+.layer-dot{
+  width:10px;height:10px;border-radius:50%;
+  flex-shrink:0;
+}
+.layer-name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.layer-id{font-size:.58rem;color:var(--text-tertiary)}
+
+/* 主画布 */
+.main-area{
+  flex:1;display:flex;align-items:center;justify-content:center;
+  position:relative;z-index:5;
+}
+.canvas-wrap{
+  position:relative;
+  background:#12121a;
+  border-radius:12px;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.05),
+    0 16px 60px rgba(0,0,0,.5),
+    0 0 120px rgba(99,102,241,.06);
+}
+/* 画布内网格 */
+.canvas-grid-bg{
+  position:absolute;inset:0;border-radius:12px;pointer-events:none;
+  background-image:
+    linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);
+  background-size:20px 20px;
+  z-index:0;
+}
+svg{display:block;border-radius:12px;position:relative;z-index:1}
+
+.watermark{
+  position:absolute;bottom:12px;right:16px;
+  font-size:.58rem;color:rgba(255,255,255,.06);pointer-events:none;
+  font-weight:400;letter-spacing:.6px;
+}
+
+/* 工具栏 */
+.toolbar{
+  position:absolute;top:0;right:0;display:flex;gap:6px;
+  padding:10px 12px;z-index:10;
+}
+.toolbar button{
+  width:34px;height:34px;border-radius:var(--radius-xs);
+  border:1px solid var(--border);background:var(--glass);
+  color:var(--text-secondary);cursor:pointer;font-size:.85rem;
+  transition:all .2s var(--ease);display:flex;align-items:center;justify-content:center;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+}
+.toolbar button:hover{
+  border-color:var(--border-glow);color:var(--text);
+  background:var(--glass-hover);
+}
+
+/* 图形动画 */
+@keyframes popIn{
+  0%{opacity:0;transform:scale(0)}
+  60%{transform:scale(1.15)}
+  100%{opacity:1;transform:scale(1)}
+}
+.shape-animate{
+  animation:popIn .4s var(--ease);
+  transform-origin:center;
+}
+
+/* Hover 高亮 */
+.shape-hover{filter:brightness(1.3) drop-shadow(0 0 8px rgba(99,102,241,.6))}
+
+/* 响应式 */
+@media(max-width:1200px){.sidebar{width:340px;min-width:340px}}
+</style>
+</head>
+<body>
+
+<div class="bg-aura"></div>
+<div class="bg-grid"></div>
+<div class="overlay" id="overlay" onclick="toggleShortcuts()">
+  <div class="shortcut-panel" onclick="event.stopPropagation()">
+    <h2>⌨️ 快捷键</h2>
+    <table>
+      <tr><td>🎤 空格键</td><td>开始 / 停止录音</td></tr>
+      <tr><td>↩ Ctrl+Z</td><td>撤销</td></tr>
+      <tr><td>🗑 Delete</td><td>清空画布</td></tr>
+      <tr><td>📥 Ctrl+S</td><td>导出 PNG</td></tr>
+      <tr><td>?</td><td>显示本面板</td></tr>
+      <tr><td>Esc</td><td>关闭面板</td></tr>
+    </table>
+    <p style="color:var(--text-tertiary);font-size:.65rem;margin-top:14px">点击遮罩或按 Esc 关闭</p>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- 侧栏 -->
+<div class="sidebar">
+  <div class="sidebar-header">
+    <div class="logo">🎨</div>
+    <h1>Voice Draw</h1>
+    <div class="status-dot" id="statusDot"></div>
+  </div>
+
+  <div class="status-bar">
+    <span>画布元素 <span class="obj-badge" id="objCount">0</span></span>
+    <span id="lastSource"></span>
+  </div>
+
+  <div class="voice-section">
+    <button class="mic-btn" id="micBtn">
+      <span>🎤 点击开始录音</span>
+    </button>
+    <div class="waveform" id="waveform">
+      <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+      <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+    </div>
+    <div class="mic-hint">点击开始录音 · 说完再点击停止 · 空格键快速切换</div>
+    <div class="transcript" id="transcript">说出绘图指令…</div>
+  </div>
+
+  <div class="quick-row">
+    <button onclick="sendText('画五角星')">⭐ 五角星</button>
+    <button onclick="sendText('画爱心')">❤️ 爱心</button>
+    <button onclick="sendText('画菱形')">💎 菱形</button>
+    <button onclick="sendText('画六边形')">⬡ 六边形</button>
+    <button onclick="sendText('画箭头')">➡ 箭头</button>
+    <button onclick="sendText('画太阳')">☀ 太阳</button>
+    <button onclick="sendText('画房子')">🏠 房子</button>
+    <button onclick="sendText('写Hello World')">Aa</button>
+    <button onclick="sendText('清空画布')">🗑</button>
+    <button onclick="undoLast()">↩</button>
+  </div>
+
+  <div class="clarity-box" id="clarityBox"></div>
+
+  <div class="log-section">
+    <h3>操作日志</h3>
+    <div class="log-list" id="logList">
+      <div style="color:var(--text-tertiary);padding:30px;text-align:center;font-size:.75rem;">说出指令开始创作…</div>
+    </div>
+  </div>
+
+  <div class="layer-section">
+    <h3>图层列表</h3>
+    <div id="layerList">
+      <div style="color:var(--text-tertiary);padding:8px 28px;font-size:.68rem;">暂无对象</div>
+    </div>
+  </div>
+</div>
+
+<!-- 主画布 -->
+<div class="main-area">
+  <div class="canvas-wrap">
+    <div class="canvas-grid-bg"></div>
+    <svg id="canvas" width="800" height="600" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="toolbar">
+      <button onclick="exportPNG()" title="导出PNG (Ctrl+S)">📥</button>
+      <button onclick="toggleShortcuts()" title="快捷键 (?)">?</button>
+    </div>
+  </div>
+  <div class="watermark">Voice Draw v3.0 · Pure Voice Control</div>
+</div>
+
+<script>
+// =========================================================================
+// 全局状态
+// =========================================================================
+const API_BASE='';
+const SVG_NS='http://www.w3.org/2000/svg';
+let objects={},actionHistory=[],isListening=false,recognition=null,finalTranscript='';
+
+const $=id=>document.getElementById(id);
+const canvas=$('canvas'),micBtn=$('micBtn'),waveform=$('waveform'),transcriptEl=$('transcript');
+const clarityBox=$('clarityBox'),logList=$('logList'),objCountEl=$('objCount'),statusDot=$('statusDot');
+const lastSourceEl=$('lastSource'),layerList=$('layerList'),toastContainer=$('toastContainer'),overlay=$('overlay');
+
+// =========================================================================
+// Toast
+// =========================================================================
+function toast(msg,type='info'){
+  const el=document.createElement('div');el.className=`toast ${type}`;el.textContent=msg;
+  toastContainer.appendChild(el);
+  setTimeout(()=>el.remove(),2900);
+}
+
+// =========================================================================
+// 快捷键面板
+// =========================================================================
+function toggleShortcuts(){overlay.classList.toggle('show')}
+document.addEventListener('keydown',e=>{
+  if(e.code==='Escape')overlay.classList.remove('show');
+  if(e.code==='Slash'&&e.shiftKey&&e.target===document.body){e.preventDefault();toggleShortcuts()}
+  if((e.ctrlKey||e.metaKey)&&e.code==='KeyZ'){e.preventDefault();undoLast()}
+  if(e.code==='Delete'&&e.target===document.body){e.preventDefault();clearCanvas();toast('画布已清空','info')}
+  if((e.ctrlKey||e.metaKey)&&e.code==='KeyS'){e.preventDefault();exportPNG()}
+});
+
+// =========================================================================
+// 导出 PNG
+// =========================================================================
+function exportPNG(){
+  const svgEl=canvas;
+  const clone=svgEl.cloneNode(true);
+  // 移除动画class
+  clone.querySelectorAll('.shape-animate').forEach(el=>el.classList.remove('shape-animate'));
+  const serializer=new XMLSerializer();
+  const svgStr=serializer.serializeToString(clone);
+  const blob=new Blob([svgStr],{type:'image/svg+xml'});
+  const url=URL.createObjectURL(blob);
+  const img=new Image();
+  img.onload=()=>{
+    const c=document.createElement('canvas');c.width=800;c.height=600;
+    const ctx=c.getContext('2d');ctx.fillStyle='#12121a';ctx.fillRect(0,0,800,600);
+    ctx.drawImage(img,0,0);
+    const a=document.createElement('a');a.download='voice-draw.png';a.href=c.toDataURL('image/png');a.click();
+    URL.revokeObjectURL(url);
+    toast('PNG 已导出','success');
+  };
+  img.src=url;
+}
+
+// =========================================================================
+// 音频波形 (Web Audio API)
+// =========================================================================
+let audioCtx=null,analyser=null,waveBars=[],waveAnimId=null;
+function initAudioWaveform(){
+  waveBars=waveform.querySelectorAll('.wave-bar');
+}
+function startWaveform(){
+  if(!audioCtx){
+    navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
+      audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+      analyser=audioCtx.createAnalyser();
+      analyser.fftSize=256;
+      const source=audioCtx.createMediaStreamSource(stream);
+      source.connect(analyser);
+      animateWaveform();
+    }).catch(()=>{
+      // 降级：随机动画
+      animateWaveformFallback();
+    });
+  }else if(analyser){
+    animateWaveform();
+  }else{
+    animateWaveformFallback();
+  }
+}
+function animateWaveform(){
+  if(!isListening){waveAnimId=null;return}
+  const data=new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(data);
+  const step=Math.floor(data.length/waveBars.length);
+  waveBars.forEach((bar,i)=>{
+    const v=data[i*step]/255;
+    bar.style.height=(4+v*28)+'px';
+  });
+  waveAnimId=requestAnimationFrame(animateWaveform);
+}
+function animateWaveformFallback(){
+  if(!isListening){waveAnimId=null;return}
+  waveBars.forEach((bar,i)=>{
+    bar.style.height=(6+Math.random()*22)+'px';
+  });
+  waveAnimId=setTimeout(animateWaveformFallback,100);
+}
+function stopWaveform(){
+  if(waveAnimId){cancelAnimationFrame(waveAnimId);clearTimeout(waveAnimId);waveAnimId=null}
+  waveBars.forEach(bar=>bar.style.height='4px');
+}
+
+// =========================================================================
+// 语音识别
+// =========================================================================
+function initSpeechRecognition(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){micBtn.disabled=true;micBtn.querySelector('span').textContent='⚠ 浏览器不支持语音';return}
+  recognition=new SR();
+  recognition.lang='zh-CN';
+  recognition.continuous=true;
+  recognition.interimResults=true;
+  recognition.maxAlternatives=1;
+
+  recognition.onresult=(event)=>{
+    let interim='',final='';
+    for(let i=event.resultIndex;i<event.results.length;i++){
+      const r=event.results[i];
+      if(r.isFinal)final+=r[0].transcript;
+      else interim+=r[0].transcript;
+    }
+    if(final)finalTranscript+=final;
+    if(interim){transcriptEl.textContent=finalTranscript+interim;transcriptEl.classList.add('interim');transcriptEl.classList.remove('final')}
+    else if(finalTranscript){transcriptEl.textContent=finalTranscript;transcriptEl.classList.remove('interim');transcriptEl.classList.add('final')}
+  };
+
+  recognition.onerror=(e)=>{
+    if(e.error==='no-speech'||e.error==='aborted')return;
+    stopListening();toast('识别错误: '+e.error,'error');
+  };
+
+  recognition.onend=()=>{
+    stopListening();
+    const text=finalTranscript.trim();
+    if(text){
+      transcriptEl.textContent=`✅ "${text}"`;
+      transcriptEl.classList.remove('interim');transcriptEl.classList.add('final');
+      sendText(text);
+    }else{transcriptEl.textContent='未识别到语音'}
+  };
+}
+
+micBtn.addEventListener('click',e=>{e.preventDefault();toggleMic()});
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'&&e.target===document.body){e.preventDefault();toggleMic()}
+});
+
+function toggleMic(){isListening?stopListening():startListening()}
+function startListening(){
+  if(!recognition||isListening)return;
+  finalTranscript='';transcriptEl.textContent='🎙 正在聆听…';
+  transcriptEl.classList.remove('interim','final');
+  isListening=true;micBtn.classList.add('listening');
+  micBtn.querySelector('span').textContent='🔴 录音中…点击停止';
+  waveform.classList.add('active');
+  startWaveform();
+  try{recognition.start()}catch(e){}
+}
+function stopListening(){
+  if(!isListening)return;
+  isListening=false;micBtn.classList.remove('listening');
+  micBtn.querySelector('span').textContent='🎤 点击开始录音';
+  waveform.classList.remove('active');stopWaveform();
+  if(recognition)try{recognition.stop()}catch(e){}
+}
+
+// =========================================================================
+// 设置按钮状态 (thinking)
+// =========================================================================
+function setThinking(v){
+  if(v){micBtn.classList.add('thinking');micBtn.querySelector('span').textContent='✨ AI 正在绘制…'}
+  else{micBtn.classList.remove('thinking');micBtn.querySelector('span').textContent='🎤 点击开始录音'}
+}
+
+// =========================================================================
+// API
+// =========================================================================
+async function sendText(text){
+  if(!text||!text.trim())return;
+  addLog(`📝 "${text}"`,'');
+
+  if(/^(清空|全部删除|重来|清除|全清)$/.test(text.trim())){clearCanvas();toast('画布已清空','info');return}
+  if(/^撤销$/.test(text.trim())){undoLast();return}
+
+  setThinking(true);
+  try{
+    const history=Object.values(objects).map(o=>({id:o.id,type:o.type,params:o.params}));
+    const resp=await fetch(`${API_BASE}/api/parse`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({instruction:text,history})
+    });
+    if(!resp.ok){const e=await resp.json();throw new Error(e.detail||'服务器错误')}
+    const data=await resp.json();
+
+    if(data.clarification){showClarity(data.clarification);addLog(`❓ ${data.clarification}`,'clarify');setThinking(false);return}
+    hideClarity();
+
+    if(data.actions&&data.actions.length>0){
+      for(const a of data.actions)executeAction(a);
+      const srcTag=data.source==='local'?'<span class="source-tag local">本地</span>':'<span class="source-tag api">API</span>';
+      addLog(`✅ ${data.actions.length} 操作 ${srcTag}`,'');
+      lastSourceEl.innerHTML=srcTag;
+      toast(`绘制完成 (${data.source})`,'success');
+    }else if(data.intent==='chat'){
+      showClarity('这是绘图工具，请说绘图相关指令');
+      toast('请说绘图指令','info');
+    }
+  }catch(e){
+    addLog(`❌ ${e.message}`,'error');
+    toast('失败: '+e.message,'error');
+    if(e.message.includes('Failed to fetch')){
+      showClarity('无法连接后端，请启动 server.py');
+      statusDot.classList.add('offline');
+    }
+  }
+  setThinking(false);
+}
+
+// =========================================================================
+// 渲染引擎
+// =========================================================================
+function executeAction(a){
+  const {id,type,params}=a;
+  let el=null;
+  switch(type){
+    case'circle':el=drawCircleEl(id,params);break;
+    case'rect':el=drawRectEl(id,params);break;
+    case'line':el=drawLineEl(id,params);break;
+    case'triangle':el=drawTriangleEl(id,params);break;
+    case'polygon':el=drawPolygonEl(id,params);break;
+    case'text':el=drawTextEl(id,params);break;
+    case'modify':modifyObject(params.targetId,params);return;
+    case'move':moveObject(params.targetId,params);return;
+    case'copy':copyObject(params.targetId,params);return;
+    case'scale':scaleObject(params.targetId,params);return;
+    case'delete':deleteObject(params.targetId||id);return;
+    case'clear':clearCanvas();return;
+    case'undo':undoLast();return;
+  }
+  if(el){
+    el.classList.add('shape-animate');
+    // 动画结束后移除 class
+    el.addEventListener('animationend',()=>el.classList.remove('shape-animate'),{once:true});
+    saveObject(id,type,params,el);
+  }
+}
+
+function createEl(tag,attrs={}){
+  const el=document.createElementNS(SVG_NS,tag);
+  for(const[k,v]of Object.entries(attrs))el.setAttribute(k,v);
+  // hover 效果
+  el.addEventListener('mouseenter',()=>el.classList.add('shape-hover'));
+  el.addEventListener('mouseleave',()=>el.classList.remove('shape-hover'));
+  return el;
+}
+
+function drawCircleEl(id,p){
+  return createEl('circle',{cx:p.cx||400,cy:p.cy||300,r:p.r||50,stroke:p.stroke||'#fff','stroke-width':p.strokeWidth||2,fill:p.fill||'rgba(255,255,255,0.06)','data-id':id});
+}
+function drawRectEl(id,p){
+  return createEl('rect',{x:p.x||300,y:p.y||200,width:p.width||100,height:p.height||80,stroke:p.stroke||'#fff','stroke-width':p.strokeWidth||2,fill:p.fill||'rgba(255,255,255,0.06)',rx:'4','data-id':id});
+}
+function drawLineEl(id,p){
+  return createEl('line',{x1:p.x1||100,y1:p.y1||100,x2:p.x2||400,y2:p.y2||400,stroke:p.stroke||'#fff','stroke-width':p.strokeWidth||2,'data-id':id});
+}
+function drawTriangleEl(id,p){
+  const pts=`${p.x1||300},${p.y1||100} ${p.x2||350},${p.y2||200} ${p.x3||250},${p.y3||200}`;
+  return createEl('polygon',{points:pts,stroke:p.stroke||'#fff','stroke-width':p.strokeWidth||2,fill:p.fill||'rgba(255,255,255,0.06)','data-id':id});
+}
+function drawPolygonEl(id,p){
+  return createEl('polygon',{points:p.points||'',stroke:p.stroke||'#fff','stroke-width':p.strokeWidth||2,fill:p.fill||'rgba(255,255,255,0.06)','data-id':id});
+}
+function drawTextEl(id,p){
+  const el=createEl('text',{x:p.x||400,y:p.y||300,'font-size':p.fontSize||20,fill:p.fill||'#fff','font-family':'Inter, system-ui, sans-serif','data-id':id});
+  el.textContent=p.content||'';
+  return el;
+}
+
+function modifyObject(targetId,newParams){
+  const obj=objects[targetId];if(!obj)return;
+  const merged={...obj.params,...newParams};delete merged.targetId;
+  const oldEl=obj.el;const parent=oldEl.parentNode;const prev={...obj.params};
+  obj.params=merged;
+  let newEl;
+  switch(obj.type){
+    case'circle':newEl=drawCircleEl(targetId,merged);break;
+    case'rect':newEl=drawRectEl(targetId,merged);break;
+    case'polygon':newEl=drawPolygonEl(targetId,merged);break;
+    case'text':newEl=drawTextEl(targetId,merged);break;
+    default:return;
+  }
+  newEl.dataset.id=targetId;parent.replaceChild(newEl,oldEl);obj.el=newEl;
+  actionHistory.push({action:{type:'modify',targetId,previousParams:prev,newParams:merged}});
+}
+function moveObject(targetId,p){
+  const obj=objects[targetId];if(!obj)return;
+  const prev={...obj.params};
+  const el=obj.el;
+
+  // 计算实际移动量
+  let dx=0,dy=0;
+  if(p.dx!==undefined&&p.dy!==undefined){dx=p.dx;dy=p.dy;}
+  else if(p.x!==undefined&&p.y!==undefined){
+    // 绝对位置：根据元素类型计算差值
+    switch(obj.type){
+      case'circle':dx=p.x-obj.params.cx;dy=p.y-obj.params.cy;break;
+      case'rect':case'text':dx=p.x-obj.params.x;dy=p.y-obj.params.y;break;
+      case'line':dx=p.x-(obj.params.x1+obj.params.x2)/2;dy=p.y-(obj.params.y1+obj.params.y2)/2;break;
+      case'triangle':{
+        const ox=(obj.params.x1+obj.params.x2+obj.params.x3)/3;
+        const oy=(obj.params.y1+obj.params.y2+obj.params.y3)/3;
+        dx=p.x-ox;dy=p.y-oy;break;
+      }
+      case'polygon':{
+        // polygon 可能有 cx/cy 存储位置，或从points推算
+        if(obj.params.cx!==undefined&&obj.params.cy!==undefined){
+          dx=p.x-obj.params.cx;dy=p.y-obj.params.cy;
+        }else{
+          // 从points推算中心
+          const pts=obj.params.points||'';
+          const arr=pts.split(' ').map(s=>s.split(',').map(Number));
+          if(arr.length){
+            const ox=arr.reduce((s,p)=>s+p[0],0)/arr.length;
+            const oy=arr.reduce((s,p)=>s+p[1],0)/arr.length;
+            dx=p.x-ox;dy=p.y-oy;
+          }
+        }break;
+      }
+    }
+  }
+
+  // 应用位移
+  switch(obj.type){
+    case'circle':
+      obj.params.cx+=dx;obj.params.cy+=dy;
+      el.setAttribute('cx',obj.params.cx);el.setAttribute('cy',obj.params.cy);
+      break;
+    case'rect':case'text':
+      obj.params.x+=dx;obj.params.y+=dy;
+      el.setAttribute('x',obj.params.x);el.setAttribute('y',obj.params.y);
+      break;
+    case'line':
+      obj.params.x1+=dx;obj.params.y1+=dy;obj.params.x2+=dx;obj.params.y2+=dy;
+      el.setAttribute('x1',obj.params.x1);el.setAttribute('y1',obj.params.y1);
+      el.setAttribute('x2',obj.params.x2);el.setAttribute('y2',obj.params.y2);
+      break;
+    case'triangle':
+      obj.params.x1+=dx;obj.params.y1+=dy;obj.params.x2+=dx;obj.params.y2+=dy;
+      obj.params.x3+=dx;obj.params.y3+=dy;
+      el.setAttribute('points',`${obj.params.x1},${obj.params.y1} ${obj.params.x2},${obj.params.y2} ${obj.params.x3},${obj.params.y3}`);
+      break;
+    case'polygon':
+      // 更新 points 中每个坐标
+      const pts=(obj.params.points||'').split(' ');
+      const newPts=pts.map(s=>{const[vx,vy]=s.split(',').map(Number);return `${vx+dx},${vy+dy}`}).join(' ');
+      obj.params.points=newPts;
+      el.setAttribute('points',newPts);
+      // 更新cx/cy如果存在
+      if(obj.params.cx!==undefined)obj.params.cx+=dx;
+      if(obj.params.cy!==undefined)obj.params.cy+=dy;
+      break;
+  }
+
+  // 高亮被移动的元素
+  el.classList.add('shape-hover');
+  setTimeout(()=>el.classList.remove('shape-hover'),600);
+
+  actionHistory.push({action:{type:'move',targetId,previousParams:prev,newParams:{...obj.params}}});
+  updateUI();
+}
+// =========================================================================
+// 复制对象
+// =========================================================================
+function copyObject(targetId,p){
+  const obj=objects[targetId];if(!obj)return;
+  const dx=p.dx||30,dy=p.dy||30;
+  const newParams={...obj.params};
+  const newId='obj_'+Date.now()+'_'+Math.floor(Math.random()*1000);
+  let newEl;
+  switch(obj.type){
+    case'circle':newParams.cx=(newParams.cx||0)+dx;newParams.cy=(newParams.cy||0)+dy;newEl=drawCircleEl(newId,newParams);break;
+    case'rect':newParams.x=(newParams.x||0)+dx;newParams.y=(newParams.y||0)+dy;newEl=drawRectEl(newId,newParams);break;
+    case'line':newParams.x1=(newParams.x1||0)+dx;newParams.y1=(newParams.y1||0)+dy;newParams.x2=(newParams.x2||0)+dx;newParams.y2=(newParams.y2||0)+dy;newEl=drawLineEl(newId,newParams);break;
+    case'triangle':newParams.x1+=dx;newParams.y1+=dy;newParams.x2+=dx;newParams.y2+=dy;newParams.x3+=dx;newParams.y3+=dy;newEl=drawTriangleEl(newId,newParams);break;
+    case'polygon':{
+      const pts=(newParams.points||'').split(' ');
+      newParams.points=pts.map(s=>{const[vx,vy]=s.split(',').map(Number);return `${vx+dx},${vy+dy}`}).join(' ');
+      newEl=drawPolygonEl(newId,newParams);
+      break;
+    }
+    case'text':newParams.x=(newParams.x||0)+dx;newParams.y=(newParams.y||0)+dy;newEl=drawTextEl(newId,newParams);break;
+  }
+  if(newEl){
+    newEl.classList.add('shape-animate');
+    newEl.addEventListener('animationend',()=>newEl.classList.remove('shape-animate'),{once:true});
+    saveObject(newId,obj.type,newParams,newEl);
+    toast(`已复制: ${targetId}`,'success');
+  }
+}
+
+// =========================================================================
+// 缩放对象
+// =========================================================================
+function scaleObject(targetId,p){
+  const obj=objects[targetId];if(!obj)return;
+  const scale=p.scale||1.5;
+  const prev={...obj.params};
+  const el=obj.el;
+
+  switch(obj.type){
+    case'circle':
+      obj.params.r=Math.max(5,(obj.params.r||50)*scale);
+      el.setAttribute('r',obj.params.r);
+      break;
+    case'rect':
+      obj.params.width=Math.max(10,(obj.params.width||100)*scale);
+      obj.params.height=Math.max(10,(obj.params.height||80)*scale);
+      el.setAttribute('width',obj.params.width);el.setAttribute('height',obj.params.height);
+      break;
+    case'text':
+      obj.params.fontSize=Math.max(8,Math.round((obj.params.fontSize||24)*scale));
+      el.setAttribute('font-size',obj.params.fontSize);
+      break;
+    case'line':case'triangle':case'polygon':{
+      // 对多边形：重算所有坐标点（相对于中心缩放）
+      let cx,cy;
+      if(obj.type==='line'){
+        cx=(obj.params.x1+obj.params.x2)/2;cy=(obj.params.y1+obj.params.y2)/2;
+      }else if(obj.type==='triangle'){
+        cx=(obj.params.x1+obj.params.x2+obj.params.x3)/3;cy=(obj.params.y1+obj.params.y2+obj.params.y3)/3;
+      }else{
+        const pts=(obj.params.points||'').split(' ').filter(Boolean);
+        if(pts.length){
+          const arr=pts.map(s=>{const[vx,vy]=s.split(',').map(Number);return{vx,vy}});
+          cx=arr.reduce((s,p)=>s+p.vx,0)/arr.length;cy=arr.reduce((s,p)=>s+p.vy,0)/arr.length;
+        }else{cx=400;cy=300;}
+      }
+      if(obj.type==='line'){
+        obj.params.x1=cx+(obj.params.x1-cx)*scale;obj.params.y1=cy+(obj.params.y1-cy)*scale;
+        obj.params.x2=cx+(obj.params.x2-cx)*scale;obj.params.y2=cy+(obj.params.y2-cy)*scale;
+        el.setAttribute('x1',obj.params.x1);el.setAttribute('y1',obj.params.y1);
+        el.setAttribute('x2',obj.params.x2);el.setAttribute('y2',obj.params.y2);
+      }else{
+        const calcPts=(ptsStr)=>{
+          if(!ptsStr)return'';
+          return ptsStr.split(' ').filter(Boolean).map(s=>{
+            const[vx,vy]=s.split(',').map(Number);
+            return `${cx+(vx-cx)*scale},${cy+(vy-cy)*scale}`;
+          }).join(' ');
+        };
+        if(obj.type==='triangle'){
+          obj.params.x1=cx+(obj.params.x1-cx)*scale;obj.params.y1=cy+(obj.params.y1-cy)*scale;
+          obj.params.x2=cx+(obj.params.x2-cx)*scale;obj.params.y2=cy+(obj.params.y2-cy)*scale;
+          obj.params.x3=cx+(obj.params.x3-cx)*scale;obj.params.y3=cy+(obj.params.y3-cy)*scale;
+          el.setAttribute('points',`${obj.params.x1},${obj.params.y1} ${obj.params.x2},${obj.params.y2} ${obj.params.x3},${obj.params.y3}`);
+        }else if(obj.type==='polygon'){
+          obj.params.points=calcPts(obj.params.points||'');
+          el.setAttribute('points',obj.params.points);
+        }
+      }
+      break;
+    }
+  }
+  el.classList.add('shape-hover');
+  setTimeout(()=>el.classList.remove('shape-hover'),600);
+  actionHistory.push({action:{type:'scale',targetId,previousParams:prev,newParams:{...obj.params}}});
+  updateUI();
+  toast(`已缩放: ${targetId} (×${scale})`,'success');
+}
+
+function deleteObject(targetId){
+  const obj=objects[targetId];if(!obj)return;
+  const saved={id:obj.id,type:obj.type,params:{...obj.params},el:obj.el};
+  obj.el.remove();delete objects[targetId];
+  actionHistory.push({action:{type:'delete',targetId,savedObject:saved}});
+  updateUI();
+}
+function clearCanvas(){
+  while(canvas.firstChild)canvas.removeChild(canvas.firstChild);
+  const saved={...objects};objects={};
+  actionHistory.push({action:{type:'clear',savedObjects:saved}});
+  updateUI();
+}
+function undoLast(){
+  if(!actionHistory.length){toast('无可撤销操作','info');return}
+  const r=actionHistory.pop();const a=r.action;
+  switch(a.type){
+    case'circle':case'rect':case'line':case'triangle':case'polygon':case'text':
+      const o=objects[a.id||a.targetId];if(o){o.el.remove();delete objects[a.id||a.targetId]}break;
+    case'modify':const mo=objects[a.targetId];if(mo){Object.assign(mo.params,a.previousParams);rebuildModElement(mo)}break;
+    case'move':const mv=objects[a.targetId];if(mv&&a.previousParams){Object.assign(mv.params,a.previousParams);
+      switch(mv.type){
+        case'circle':mv.el.setAttribute('cx',a.previousParams.cx);mv.el.setAttribute('cy',a.previousParams.cy);break;
+        case'rect':case'text':mv.el.setAttribute('x',a.previousParams.x);mv.el.setAttribute('y',a.previousParams.y);break;
+        case'line':mv.el.setAttribute('x1',a.previousParams.x1);mv.el.setAttribute('y1',a.previousParams.y1);
+          mv.el.setAttribute('x2',a.previousParams.x2);mv.el.setAttribute('y2',a.previousParams.y2);break;
+        case'triangle':mv.el.setAttribute('points',`${a.previousParams.x1},${a.previousParams.y1} ${a.previousParams.x2},${a.previousParams.y2} ${a.previousParams.x3},${a.previousParams.y3}`);break;
+        case'polygon':mv.el.setAttribute('points',a.previousParams.points||'');break;
+      }}break;
+    case'delete':if(a.savedObject){canvas.appendChild(a.savedObject.el);objects[a.savedObject.id]=a.savedObject}break;
+    case'clear':if(a.savedObjects){Object.values(a.savedObjects).forEach(o=>{canvas.appendChild(o.el);objects[o.id]=o})}break;
+  }
+  updateUI();addLog('↩ 已撤销','');
+}
+function rebuildModElement(obj){const old=obj.el;old.replaceWith(obj.el=createElForObj(obj));obj.el.dataset.id=obj.id}
+function createElForObj(obj){
+  switch(obj.type){
+    case'circle':return drawCircleEl(obj.id,obj.params);
+    case'rect':return drawRectEl(obj.id,obj.params);
+    case'polygon':return drawPolygonEl(obj.id,obj.params);
+    case'text':return drawTextEl(obj.id,obj.params);
+    default:return old;
+  }
+}
+
+function saveObject(id,type,params,el){
+  canvas.appendChild(el);
+  objects[id]={id,type,params,el};
+  actionHistory.push({action:{type,id,params}});
+  updateUI();
+}
+
+// =========================================================================
+// UI更新
+// =========================================================================
+function updateUI(){
+  objCountEl.textContent=Object.keys(objects).length;
+  updateLayerList();
+}
+function updateLayerList(){
+  const items=Object.values(objects);
+  if(!items.length){layerList.innerHTML='<div style="color:var(--text-tertiary);padding:8px 28px;font-size:.68rem;">暂无对象</div>';return}
+  layerList.innerHTML=items.map(o=>{
+    const p=o.params;const color=p.fill&&p.fill!=='transparent'&&p.fill!=='rgba(255,255,255,0.06)'?p.fill:p.stroke||'#888';
+    const icons={circle:'●',rect:'■',line:'─',triangle:'▲',polygon:'◆',text:'T'};
+    return `<div class="layer-item" onclick="selectObject('${o.id}')">
+      <span class="layer-dot" style="background:${color}"></span>
+      <span class="layer-name">${icons[o.type]||'●'} ${o.type} #${o.id.split('_')[1]}</span>
+      <span class="layer-id">${o.id}</span>
+    </div>`;
+  }).join('');
+}
+function selectObject(id){
+  const obj=objects[id];if(!obj)return;
+  obj.el.classList.add('shape-hover');
+  setTimeout(()=>obj.el.classList.remove('shape-hover'),1200);
+  toast(`已定位: ${id}`,'info');
+}
+
+// =========================================================================
+// 日志
+// =========================================================================
+function addLog(msg,type){
+  const time=new Date().toLocaleTimeString();
+  const entry=document.createElement('div');
+  entry.className='log-entry'+(type?' '+type:'');
+  entry.innerHTML=`<div class="log-meta"><span class="log-time">${time}</span></div>${msg}`;
+  const ph=logList.querySelector('div[style]');if(ph)ph.remove();
+  logList.prepend(entry);
+  while(logList.children.length>60)logList.lastChild.remove();
+}
+function showClarity(msg){clarityBox.textContent='💬 '+msg;clarityBox.classList.add('show')}
+function hideClarity(){clarityBox.classList.remove('show')}
+
+async function checkHealth(){
+  try{const r=await fetch(`${API_BASE}/api/health`);if(r.ok)statusDot.classList.remove('offline')}
+  catch(e){statusDot.classList.add('offline')}
+}
+
+// =========================================================================
+// 启动
+// =========================================================================
+initSpeechRecognition();
+initAudioWaveform();
+checkHealth();
+setInterval(checkHealth,20000);
+</script>
+</body>
+</html>
